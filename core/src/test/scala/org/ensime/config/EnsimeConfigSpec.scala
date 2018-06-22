@@ -2,27 +2,27 @@
 // License: http://www.gnu.org/licenses/gpl-3.0.en.html
 package org.ensime.config
 
-import org.ensime.util.file._
-import org.ensime.util.{ EnsimeSpec, EscapingStringInterpolation }
+import scala.util.Properties
 
 import org.ensime.api._
 import org.ensime.config.richconfig._
+import org.ensime.util.file._
+import org.ensime.util.{EnsimeSpec, EscapingStringInterpolation}
+import scalaz.ioeffect.RTS
 
-import scala.util.Properties
-
-class EnsimeConfigSpec extends EnsimeSpec {
+class EnsimeConfigSpec extends EnsimeSpec with RTS {
 
   import EscapingStringInterpolation._
 
   def test(contents: String, testFn: (EnsimeConfig) => Unit): Unit = {
-    val config = EnsimeConfigProtocol.parse(contents)
+    val config = unsafePerformIO(EnsimeConfigProtocol.parse(contents))
     assert(config.isRight)
     testFn(config.right.get)
   }
 
   "EnsimeConfig" should "parse a simple config" in withTempDir { dir =>
-    val abc      = dir / "abc"
-    val cache    = dir / ".ensime_cache"
+    val abc = dir / "abc"
+    val cache = dir / ".ensime_cache"
     val javaHome = File(Properties.javaHome)
 
     abc.mkdirs()
@@ -64,8 +64,8 @@ class EnsimeConfigSpec extends EnsimeSpec {
 
   it should "parse a minimal config for a binary only project" in withTempDir {
     dir =>
-      val abc      = dir / "abc"
-      val cache    = dir / ".ensime_cache"
+      val abc = dir / "abc"
+      val cache = dir / ".ensime_cache"
       val javaHome = File(Properties.javaHome)
 
       abc.mkdirs()

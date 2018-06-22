@@ -4,6 +4,9 @@ package org.ensime.config
 
 import akka.event.slf4j.Logger
 
+import scalaz.ioeffect.IO
+import scalaz._, Scalaz._
+
 import org.ensime.sexp._
 
 import org.ensime.util.file._
@@ -13,15 +16,16 @@ import org.ensime.io.Canon.ops._
 
 import org.ensime.api._
 import SexpReader.ops._
-import scalaz.ioeffect.RTS
 
-object EnsimeConfigProtocol extends RTS {
+object EnsimeConfigProtocol {
   private def log = Logger(this.getClass.getName)
 
-  def parse(config: String): Either[DeserializationException, EnsimeConfig] =
-    SexpParser(config).as[EnsimeConfig].map(validated)
+  def parse(
+      config: String
+  ): IO[Throwable, Either[DeserializationException, EnsimeConfig]] =
+    SexpParser(config).as[EnsimeConfig].traverse(validated)
 
-  def validated(c: EnsimeConfig): EnsimeConfig = {
+  def validated(c: EnsimeConfig): IO[Throwable, EnsimeConfig] = {
     // scalaz.Validation would be a cleaner way to do this
     {
       import c._
@@ -31,9 +35,9 @@ object EnsimeConfigProtocol extends RTS {
       }
     }
 
-    c.copy(
-      projects = c.projects.map(validated)
-    )
+    val updatedProjects = c.projects.traverse(validated)
+
+    updatedProjects.map(p => c.copy(projects = p))
   }
 
   def javaRunTime(c: EnsimeConfig): List[File] =
@@ -46,13 +50,15 @@ object EnsimeConfigProtocol extends RTS {
    directories and then re-canon them, which is - admittedly - a weird
    side-effect.
    */
-  private[config] def validated(p: EnsimeProject): EnsimeProject = {
+  private[config] def validated(
+      p: EnsimeProject
+  ): IO[Throwable, EnsimeProject] = {
     (p.targets ++ p.sources).foreach { dir =>
       if (!dir.exists() && !dir.isJar) {
         log.warn(s"$dir does not exist, creating")
         dir.file.mkdirs()
       }
     }
-    unsafePerformIO(p.canon)
+    p.canon
   }
 }
