@@ -2,11 +2,11 @@
 // License: http://www.gnu.org/licenses/gpl-3.0.en.html
 package org.ensime.lsp.ensime
 
-import java.io.{File, InputStream, OutputStream}
+import java.io.{ File, InputStream, OutputStream }
 import java.net.URI
 import java.nio.file.Paths
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.pattern.ask
 import akka.util.Timeout
 import com.typesafe.config._
@@ -16,7 +16,7 @@ import org.ensime.config.richconfig._
 import org.ensime.core._
 import org.ensime.lsp.api.commands._
 import org.ensime.lsp.api.types._
-import org.ensime.lsp.core.{LanguageServer, MessageReader, TextDocument}
+import org.ensime.lsp.core.{ LanguageServer, MessageReader, TextDocument }
 import org.ensime.util.file._
 import org.ensime.util.path._
 import scalaz.ioeffect.IO
@@ -24,22 +24,22 @@ import scalaz.ioeffect.IO
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import scala.util.{Failure, Success, Try}
+import scala.util.{ Failure, Success, Try }
 
 object EnsimeLanguageServer {
   private val KeywordToKind = Map(
-    "class" -> SymbolKind.Class,
-    "trait" -> SymbolKind.Interface,
-    "type" -> SymbolKind.Interface,
+    "class"   -> SymbolKind.Class,
+    "trait"   -> SymbolKind.Interface,
+    "type"    -> SymbolKind.Interface,
     "package" -> SymbolKind.Package,
-    "def" -> SymbolKind.Method,
-    "val" -> SymbolKind.Constant,
-    "var" -> SymbolKind.Field
+    "def"     -> SymbolKind.Method,
+    "val"     -> SymbolKind.Constant,
+    "var"     -> SymbolKind.Field
   )
 
   private def toSourceFileInfo(
-      uri: String,
-      contents: Option[String] = None
+    uri: String,
+    contents: Option[String] = None
   ): SourceFileInfo = {
     val f = new File(new URI(uri))
     SourceFileInfo(RawFile(f.toPath), contents)
@@ -66,8 +66,8 @@ object EnsimeLanguageServer {
   }
 
   private def toDiagnostic(note: Note): Diagnostic = {
-    val start = note.beg
-    val end = note.end
+    val start  = note.beg
+    val end    = note.end
     val length = end - start
 
     val severity = note.severity match {
@@ -90,14 +90,14 @@ object EnsimeLanguageServer {
 
 class EnsimeLanguageServer(in: InputStream, out: OutputStream)
     extends LanguageServer(in, out) {
-  private var system: ActorSystem = _
+  private var system: ActorSystem      = _
   private var fileStore: TempFileStore = _
-  private var projectPath: String = _
+  private var projectPath: String      = _
   // these fields will eventually become constructor params
 
   // Ensime root actor
   private var ensimeActor: ActorRef = _
-  implicit val timeout: Timeout = Timeout(5 seconds)
+  implicit val timeout: Timeout     = Timeout(5 seconds)
 
   override def start(): Unit = {
     super.start()
@@ -107,9 +107,9 @@ class EnsimeLanguageServer(in: InputStream, out: OutputStream)
   }
 
   override def initialize(
-      pid: Long,
-      rootPath: String,
-      capabilities: ClientCapabilities
+    pid: Long,
+    rootPath: String,
+    capabilities: ClientCapabilities
   ): ServerCapabilities = {
     log.info(s"Initialized with $pid, $rootPath, $capabilities")
 
@@ -128,80 +128,75 @@ class EnsimeLanguageServer(in: InputStream, out: OutputStream)
   }
 
   def loadConfig(ensimeFile: File): Config = {
-    val config = s"""ensime.config = "${ensimeFile.toString}" """
+    val config   = s"""ensime.config = "${ensimeFile.toString}" """
     val fallback = ConfigFactory.parseString(config)
     ConfigFactory.load().withFallback(fallback)
   }
 
   private def initializeEnsime(
-      rootPath: String
+    rootPath: String
   ): IO[Throwable, EnsimeConfig] = { // rewrite initialization
     val ensimeFile = new File(s"$rootPath/.ensime")
 
     val configT: IO[Throwable, (EnsimeConfig, EnsimeServerConfig)] =
       IO.syncThrowable {
-          val config = loadConfig(ensimeFile)
-          system = ActorSystem("ENSIME", config)
+        val config = loadConfig(ensimeFile)
+        system = ActorSystem("ENSIME", config)
+        config
+      }.flatMap { config =>
+        val serverConfig: EnsimeServerConfig = parseServerConfig(config)
+        EnsimeConfigProtocol
+          .parse(
+            serverConfig.config.file.readString()(MessageReader.Utf8Charset)
+          )
+          .flatMap {
+            case Right(c) => IO.now(c -> serverConfig)
+            case Left(err) =>
+              IO.fail(new IllegalArgumentException(err.toString))
+          }
+      }
+
+    configT.onError { err =>
+      val e = err.merge
+      IO.sync {
+        log.error(s"initializeEnsime Error: ${e.getMessage}")
+        e.printStackTrace()
+
+        if (ensimeFile.exists) {
+          connection.showMessage(MessageType.Error,
+                                 s"Error parsing .ensime: ${e.getMessage}")
+        } else {
+          connection.showMessage(
+            MessageType.Error,
+            s"No .ensime file in directory. Run `sbt ensimeConfig` to create one."
+          )
+        }
+      }
+    }.flatMap {
+      case (config, serverConfig) =>
+        val t = IO.syncThrowable {
+          log.info(s"Using configuration: $config")
+          fileStore = new TempFileStore(config.cacheDir.file.toString)
+          ensimeActor = system.actorOf(
+            Props(classOf[EnsimeActor], this, config, serverConfig),
+            "server"
+          )
+          projectPath = rootPath
+        }
+
+        t.catchAll {
+          case e =>
+            IO.syncThrowable {
+              log.error(s"initializeEnsime: ${e.getMessage}")
+              e.printStackTrace()
+              connection.showMessage(MessageType.Error,
+                                     s"Error creating storage: ${e.getMessage}")
+            }
+        }.map { _ =>
+          ensimeActor ! ConnectionInfoReq
           config
         }
-        .flatMap { config =>
-          val serverConfig: EnsimeServerConfig = parseServerConfig(config)
-          EnsimeConfigProtocol
-            .parse(
-              serverConfig.config.file.readString()(MessageReader.Utf8Charset)
-            )
-            .flatMap {
-              case Right(c) => IO.now(c -> serverConfig)
-              case Left(err) =>
-                IO.fail(new IllegalArgumentException(err.toString))
-            }
-        }
-
-    configT
-      .onError { err =>
-        val e = err.merge
-        IO.sync {
-          log.error(s"initializeEnsime Error: ${e.getMessage}")
-          e.printStackTrace()
-
-          if (ensimeFile.exists) {
-            connection.showMessage(MessageType.Error,
-                                   s"Error parsing .ensime: ${e.getMessage}")
-          } else {
-            connection.showMessage(
-              MessageType.Error,
-              s"No .ensime file in directory. Run `sbt ensimeConfig` to create one."
-            )
-          }
-        }
-      }
-      .flatMap {
-        case (config, serverConfig) =>
-          val t = IO.syncThrowable {
-            log.info(s"Using configuration: $config")
-            fileStore = new TempFileStore(config.cacheDir.file.toString)
-            ensimeActor = system.actorOf(
-              Props(classOf[EnsimeActor], this, config, serverConfig),
-              "server"
-            )
-            projectPath = rootPath
-          }
-
-          t.catchAll {
-              case e =>
-                IO.syncThrowable {
-                  log.error(s"initializeEnsime: ${e.getMessage}")
-                  e.printStackTrace()
-                  connection.showMessage(
-                    MessageType.Error,
-                    s"Error creating storage: ${e.getMessage}")
-                }
-            }
-            .map { _ =>
-              ensimeActor ! ConnectionInfoReq
-              config
-            }
-      }
+    }
   }
 
   override def onChangeWatchedFiles(changes: Seq[FileEvent]): Unit =
@@ -238,8 +233,8 @@ class EnsimeLanguageServer(in: InputStream, out: OutputStream)
     }
 
   override def onChangeTextDocument(
-      td: VersionedTextDocumentIdentifier,
-      changes: Seq[TextDocumentContentChangeEvent]
+    td: VersionedTextDocumentIdentifier,
+    changes: Seq[TextDocumentContentChangeEvent]
   ): Unit = {
     // we assume full text sync
     assert(changes.size == 1)
@@ -267,7 +262,7 @@ class EnsimeLanguageServer(in: InputStream, out: OutputStream)
     log.info(s"Received ${diagnostics.size} notes.")
 
     for {
-      doc <- documentManager.allOpenDocuments
+      doc  <- documentManager.allOpenDocuments
       path = Paths.get(new URI(doc.uri)).toString
     } connection.publishDiagnostics(
       doc.uri,
@@ -353,7 +348,7 @@ class EnsimeLanguageServer(in: InputStream, out: OutputStream)
                   .getFile(ensimeFile)
                   .map(path => {
                     val file = path.toFile
-                    val uri = file.toURI.toString
+                    val uri  = file.toURI.toString
                     val doc = TextDocument(
                       uri,
                       file.readString()(MessageReader.Utf8Charset).toCharArray
@@ -422,7 +417,7 @@ class EnsimeLanguageServer(in: InputStream, out: OutputStream)
   }
 
   override def documentSymbols(
-      tdi: TextDocumentIdentifier
+    tdi: TextDocumentIdentifier
   ): Seq[SymbolInformation] = {
     import scala.concurrent.ExecutionContext.Implicits._
     import scala.concurrent.Future
@@ -432,8 +427,8 @@ class EnsimeLanguageServer(in: InputStream, out: OutputStream)
         for (doc <- documentManager.documentForUri(tdi.uri)) yield {
 
           def toSymbolInformation(
-              structure: StructureViewMember,
-              outer: Option[String]
+            structure: StructureViewMember,
+            outer: Option[String]
           ): Seq[SymbolInformation] =
             structure match {
               case StructureViewMember(keyword, name, pos, members) =>

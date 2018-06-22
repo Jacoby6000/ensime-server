@@ -21,7 +21,7 @@ object EnsimeConfigProtocol {
   private def log = Logger(this.getClass.getName)
 
   def parse(
-      config: String
+    config: String
   ): IO[Throwable, Either[DeserializationException, EnsimeConfig]] =
     SexpParser(config).as[EnsimeConfig].traverse(validated)
 
@@ -51,7 +51,7 @@ object EnsimeConfigProtocol {
    side-effect.
    */
   private[config] def validated(
-      p: EnsimeProject
+    p: EnsimeProject
   ): IO[Throwable, EnsimeProject] = {
     (p.targets ++ p.sources).foreach { dir =>
       if (!dir.exists() && !dir.isJar) {

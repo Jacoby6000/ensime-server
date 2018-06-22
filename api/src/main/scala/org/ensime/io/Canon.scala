@@ -13,10 +13,10 @@ import scalaz.ioeffect.IO
 import Scalaz._
 
 /**
-  * Transforms values to canonicalised values, eliminating the confusion at API
-  * boundaries caused by symbolic links. Most types have a trivial implementation
-  * but those that do not must perform IO.
-  */
+ * Transforms values to canonicalised values, eliminating the confusion at API
+ * boundaries caused by symbolic links. Most types have a trivial implementation
+ * but those that do not must perform IO.
+ */
 @typeclass trait Canon[A] { self =>
   def canon(a: A): IO[Throwable, A]
 
@@ -43,11 +43,11 @@ object Canon extends LowPriorityCanon {
         }
     }
 
-  implicit val string: Canon[String] = IO.now(_)
-  implicit val symbol: Canon[Symbol] = IO.now(_)
+  implicit val string: Canon[String]   = IO.now(_)
+  implicit val symbol: Canon[Symbol]   = IO.now(_)
   implicit val boolean: Canon[Boolean] = IO.now(_)
-  implicit val int: Canon[Int] = IO.now(_)
-  implicit val long: Canon[Long] = IO.now(_)
+  implicit val int: Canon[Int]         = IO.now(_)
+  implicit val long: Canon[Long]       = IO.now(_)
 }
 
 trait LowPriorityCanon {

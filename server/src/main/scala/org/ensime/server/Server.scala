@@ -2,7 +2,7 @@
 // License: http://www.gnu.org/licenses/gpl-3.0.en.html
 package org.ensime.server
 
-import java.io.{FileOutputStream, PrintStream}
+import java.io.{ FileOutputStream, PrintStream }
 import java.net.InetSocketAddress
 import java.nio.file.Paths
 
@@ -22,11 +22,11 @@ import org.ensime.util.Slf4jSetup
 import org.ensime.api.EnsimeFile.Implicits.DefaultCharset
 import org.ensime.util.path._
 import org.slf4j._
-import scalaz.ioeffect.{IO, SafeApp, Void}
+import scalaz.ioeffect.{ IO, SafeApp, Void }
 
 class ServerActor(
-    config: EnsimeConfig,
-    serverConfig: EnsimeServerConfig
+  config: EnsimeConfig,
+  serverConfig: EnsimeServerConfig
 ) extends Actor
     with ActorLogging {
 
@@ -44,14 +44,14 @@ class ServerActor(
 
   def initialiseChildren(): Unit = {
 
-    implicit val config: EnsimeConfig = this.config
+    implicit val config: EnsimeConfig             = this.config
     implicit val serverConfig: EnsimeServerConfig = this.serverConfig
 
     val broadcaster = context.actorOf(Broadcaster(), "broadcaster")
-    val project = context.actorOf(Project(broadcaster), "project")
+    val project     = context.actorOf(Project(broadcaster), "project")
 
     // async start the HTTP Server
-    val selfRef = self
+    val selfRef           = self
     val preferredHttpPort = PortUtil.port(config.cacheDir.file, "http")
 
     val hookHandlers: WebServer.HookHandlers = { outHandler =>
@@ -153,7 +153,7 @@ object Server extends SafeApp {
   }
 
   def startRegularServer(): IO[Throwable, Unit] = {
-    val config = loadConfig()
+    val config                                    = loadConfig()
     implicit val serverConfig: EnsimeServerConfig = parseServerConfig(config)
 
     EnsimeConfigProtocol.parse(serverConfig.config.file.readString()).map {
@@ -167,7 +167,7 @@ object Server extends SafeApp {
   }
 
   def startLspServer(): IO[Throwable, Unit] = IO.syncThrowable {
-    val cwd = Option(System.getProperty("lsp.workspace")).getOrElse(".")
+    val cwd    = Option(System.getProperty("lsp.workspace")).getOrElse(".")
     val server = new EnsimeLanguageServer(System.in, System.out)
 
     // route System.out somewhere else. The presentation compiler may spit out text

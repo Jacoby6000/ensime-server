@@ -7,7 +7,7 @@ import scala.util.Properties
 import org.ensime.api._
 import org.ensime.config.richconfig._
 import org.ensime.util.file._
-import org.ensime.util.{EnsimeSpec, EscapingStringInterpolation}
+import org.ensime.util.{ EnsimeSpec, EscapingStringInterpolation }
 import scalaz.ioeffect.RTS
 
 class EnsimeConfigSpec extends EnsimeSpec with RTS {
@@ -21,8 +21,8 @@ class EnsimeConfigSpec extends EnsimeSpec with RTS {
   }
 
   "EnsimeConfig" should "parse a simple config" in withTempDir { dir =>
-    val abc = dir / "abc"
-    val cache = dir / ".ensime_cache"
+    val abc      = dir / "abc"
+    val cache    = dir / ".ensime_cache"
     val javaHome = File(Properties.javaHome)
 
     abc.mkdirs()
@@ -64,8 +64,8 @@ class EnsimeConfigSpec extends EnsimeSpec with RTS {
 
   it should "parse a minimal config for a binary only project" in withTempDir {
     dir =>
-      val abc = dir / "abc"
-      val cache = dir / ".ensime_cache"
+      val abc      = dir / "abc"
+      val cache    = dir / ".ensime_cache"
       val javaHome = File(Properties.javaHome)
 
       abc.mkdirs()
